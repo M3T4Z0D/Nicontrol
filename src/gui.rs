@@ -1207,45 +1207,8 @@ fn is_gui_already_running() -> bool {
 }
 
 fn build_window_icon() -> egui::IconData {
-    const SIZE: usize = 64;
-    let mut rgba = Vec::with_capacity(SIZE * SIZE * 4);
-    let in_oct = |x: usize, y: usize, m: usize| -> bool {
-        if x < m || x > SIZE - 1 - m || y < m || y > SIZE - 1 - m {
-            return false;
-        }
-        let c = 16usize;
-        if (x - m) + (y - m) < c { return false; }
-        if (SIZE - 1 - m - x) + (y - m) < c { return false; }
-        if (x - m) + (SIZE - 1 - m - y) < c { return false; }
-        if (SIZE - 1 - m - x) + (SIZE - 1 - m - y) < c { return false; }
-        true
-    };
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            if in_oct(x, y, 4) {
-                let in_left = (18..=24).contains(&x) && (17..=47).contains(&y);
-                let in_right = (40..=46).contains(&x) && (17..=47).contains(&y);
-                let in_diag = (18..=46).contains(&x) && (17..=47).contains(&y) && {
-                    let ey = 17.0 + (x - 18) as f32 * (30.0 / 28.0);
-                    (y as f32 - ey).abs() <= 3.3
-                };
-                if in_diag {
-                    rgba.extend_from_slice(&[240, 249, 255, 255]);
-                } else if in_left || in_right || !in_oct(x, y, 6) {
-                    rgba.extend_from_slice(&[56, 189, 248, 255]);
-                } else {
-                    rgba.extend_from_slice(&[11, 24, 48, 255]);
-                }
-            } else {
-                rgba.extend_from_slice(&[0, 0, 0, 0]);
-            }
-        }
-    }
-    egui::IconData {
-        rgba,
-        width: SIZE as u32,
-        height: SIZE as u32,
-    }
+    eframe::icon_data::from_png_bytes(include_bytes!("../assets/nicontrol.png"))
+        .unwrap_or_default()
 }
 
 pub fn run_gui() {
