@@ -1,0 +1,1 @@
+KERNEL=="turbo|fan1|fan2|fan_auto", MODE="0666"

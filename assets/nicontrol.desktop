@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Nicontrol
+Comment=Open-source Fan & Power Profile Control Center
+Exec=nicontrol
+Icon=nicontrol
+Terminal=false
+Categories=System;Utility;

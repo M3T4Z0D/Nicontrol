@@ -1,0 +1,33 @@
+[package]
+name = "nicontrol"
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+description = "Open-source Control Center & System Tray for Nitro laptops on Linux (Dark Crystal Blue Edition)"
+keywords = ["nicontrol", "nitro", "linux", "fan-control", "tray"]
+categories = ["hardware-support", "gui"]
+
+[dependencies]
+eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+egui_plot = "0.31"
+ksni = { version = "0.3", features = ["blocking"] }
+
+[package.metadata.deb]
+maintainer = "Nicontrol Contributors"
+copyright = "2026, Nicontrol Contributors"
+license-file = ["LICENSE", "0"]
+extended-description = """\
+Unofficial, community-developed Control Center & System Tray for Nitro laptops on Linux. \
+Provides power mode switching (Auto / Turbo / Fan Curve), fine-grained manual fan control, and live CPU/GPU telemetry."""
+depends = "$auto"
+recommends = "libnotify-bin"
+section = "utils"
+priority = "optional"
+maintainer-scripts = "packaging/deb"
+assets = [
+    ["target/release/nicontrol", "usr/bin/", "755"],
+    ["assets/nicontrol.desktop", "usr/share/applications/", "644"],
+    ["assets/nicontrol.png", "usr/share/icons/hicolor/256x256/apps/nicontrol.png", "644"],
+    ["assets/99-nicontrol.rules", "lib/udev/rules.d/99-nicontrol.rules", "644"],
+    ["README.md", "usr/share/doc/nicontrol/README.md", "644"],
+]
