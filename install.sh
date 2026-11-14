@@ -28,9 +28,20 @@ chmod +x "$BIN_DIR/nicontrol"
 
 if [ -f "$SCRIPT_DIR/assets/nicontrol.png" ]; then
     cp "$SCRIPT_DIR/assets/nicontrol.png" "$ICON_DIR/nicontrol.png"
+    cp "$SCRIPT_DIR/assets/nicontrol.png" "$HOME/.local/share/icons/nicontrol.png"
 fi
 if [ -f "$SCRIPT_DIR/assets/nicontrol.svg" ]; then
     cp "$SCRIPT_DIR/assets/nicontrol.svg" "$SVG_ICON_DIR/nicontrol.svg"
+fi
+
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" >/dev/null 2>&1 || true
+fi
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$APP_DIR" >/dev/null 2>&1 || true
+fi
+if command -v kbuildsycoca6 >/dev/null 2>&1; then
+    kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
 fi
 
 cat > "$APP_DIR/nicontrol.desktop" <<EOF
