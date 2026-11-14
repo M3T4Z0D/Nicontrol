@@ -1,0 +1,23 @@
+Architectures: amd64
+Codename: stable
+Components: main
+Date: Sat, 14 Nov 2026 04:36:01 +0000
+Label: Nicontrol
+Origin: Nicontrol
+Suite: stable
+MD5Sum:
+ bf5f236163fdbb0f4ccb2367e07c4a6a              142 Release
+ 88b882fbef3cdb75b0c9d04081e3f28c              743 main/binary-amd64/Packages
+ 8e114bf47bdcd183f0ee61ed36acb634              520 main/binary-amd64/Packages.gz
+SHA1:
+ 336dea15149dce3c0587dc32581e84b02897f839              142 Release
+ 5132a26d37ed591dfae7c014681505a6270807e4              743 main/binary-amd64/Packages
+ 9f2a33140f96272055ed310c68fb7ffde3123da9              520 main/binary-amd64/Packages.gz
+SHA256:
+ 0ee98c8185c4b0557ff4756dd9b288ac243cc003cb18b8f78fb2323b8474fc05              142 Release
+ d2ecc730b0345b182f0e8cd7cef774bdae2bef4a56e7e2f88f84babb654c9572              743 main/binary-amd64/Packages
+ c99b0fd757a2e2936ca469694c6599ad7a36e05b99ba9b9f7a8f71be7063c696              520 main/binary-amd64/Packages.gz
+SHA512:
+ fd6739fef0e171b0ef55de751169d20734002e637006809b0961861f8229b314213816c4e39b9be565bb01e5a5042cb7f8a92332525a63e7a364aa109a0a126b              142 Release
+ 76d65154d0d947ed7dbbd04d776ad851fab19e4588f3e72005f3fa39b7a46511dbc1cdab8ca7ed38a1dbe639fb5c06a50ef6feb8bbf1914c5939947c304ee7de              743 main/binary-amd64/Packages
+ 0c8da42032f68f85eaaed52cd41df74d5fa4365b5ca1830b3f19a4f431ee0c31e95aee47815d33582d8b7d46ceaf71a39bac2e44d94f2763217026080e683246              520 main/binary-amd64/Packages.gz

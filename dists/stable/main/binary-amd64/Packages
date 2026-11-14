@@ -1,0 +1,20 @@
+Package: nicontrol
+Version: 0.2.0-1
+Architecture: amd64
+Maintainer: Nicontrol Contributors
+Installed-Size: 11733
+Depends: libc6 (>= 2.35)
+Recommends: libnotify-bin
+Filename: pool/main/nicontrol_0.2.0-1_amd64.deb
+Size: 3491696
+MD5sum: e4c92a40d5683576d7fad9ff45cecc53
+SHA1: 27d477e7452d59952eae33bdd976a6c924d50a2a
+SHA256: 4a8ec80198924f88d7082ca2774b4239ed37f28b1fa7d3ac7d35bbe188dda378
+Section: utils
+Priority: optional
+Description: Open-source Control Center & System Tray for Nitro laptops on Linux (Dark
+ Crystal Blue Edition)
+ Unofficial, community-developed Control Center & System Tray for Nitro laptops
+ on Linux. Provides power mode switching (Auto / Turbo / Fan Curve),
+ fine-grained manual fan control, and live CPU/GPU telemetry.
+
