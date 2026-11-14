@@ -1,5 +1,5 @@
 use super::{
-    pct_to_raw, raw_to_pct, save_mode, HardwareInfo, PowerMode, Telemetry,
+    pct_to_raw, raw_to_pct, save_mode, FanInfo, HardwareInfo, PowerMode, Telemetry,
 };
 use crate::i18n::{load_lang, strings, Lang};
 use std::fs;
@@ -272,35 +272,73 @@ pub fn read_cpu_temp() -> Option<u32> {
     fallback_acpitz
 }
 
-pub fn read_fan_rpms() -> (Option<u32>, Option<u32>) {
-    let Ok(entries) = fs::read_dir("/sys/class/hwmon") else {
-        return (None, None);
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let f1 = fs::read_to_string(path.join("fan1_input"))
-            .ok()
-            .and_then(|s| s.trim().parse::<u32>().ok());
-        let f2 = fs::read_to_string(path.join("fan2_input"))
-            .ok()
-            .and_then(|s| s.trim().parse::<u32>().ok());
-        if f1.is_some() || f2.is_some() {
-            return (f1, f2);
+pub fn read_fans() -> Vec<FanInfo> {
+    let mut fans = Vec::new();
+
+    if let Ok(entries) = fs::read_dir("/sys/class/hwmon") {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            for idx in 1..=8 {
+                let input_path = path.join(format!("fan{idx}_input"));
+                if !input_path.exists() {
+                    continue;
+                }
+                let rpm = fs::read_to_string(&input_path)
+                    .ok()
+                    .and_then(|s| s.trim().parse::<u32>().ok());
+                let label = fs::read_to_string(path.join(format!("fan{idx}_label")))
+                    .ok()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| match idx {
+                        1 => "CPU Fan".to_string(),
+                        2 => "GPU Fan".to_string(),
+                        _ => format!("Fan {idx}"),
+                    });
+                let pct = fs::read_to_string(path.join(format!("pwm{idx}")))
+                    .ok()
+                    .and_then(|s| s.trim().parse::<u32>().ok())
+                    .map(|pwm| ((pwm.min(255) * 100 + 127) / 255) as u16);
+
+                fans.push(FanInfo {
+                    name: label,
+                    rpm,
+                    pct,
+                });
+            }
         }
     }
-    (None, None)
+
+    if fans.is_empty() {
+        for idx in 1..=4 {
+            let dev_path = format!("/dev/fan{idx}");
+            if Path::new(&dev_path).exists() {
+                let name = match idx {
+                    1 => "CPU Fan (fan1)".to_string(),
+                    2 => "GPU Fan (fan2)".to_string(),
+                    _ => format!("Fan {idx} (fan{idx})"),
+                };
+                fans.push(FanInfo {
+                    name,
+                    rpm: None,
+                    pct: None,
+                });
+            }
+        }
+    }
+
+    fans
 }
 
 pub fn read_telemetry(cpu_sampler: &mut CpuSampler) -> Telemetry {
-    let (cpu_fan_rpm, gpu_fan_rpm) = read_fan_rpms();
+    let fans = read_fans();
     let suspended = is_nvidia_gpu_suspended();
 
     let mut tel = Telemetry {
         cpu_temp_c: read_cpu_temp(),
         cpu_usage_pct: cpu_sampler.sample_usage(),
-        cpu_fan_rpm,
-        gpu_fan_rpm,
         gpu_suspended: suspended,
+        fans,
         ..Default::default()
     };
 

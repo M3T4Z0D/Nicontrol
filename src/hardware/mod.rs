@@ -77,19 +77,25 @@ impl PowerMode {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FanInfo {
+    pub name: String,
+    pub rpm: Option<u32>,
+    pub pct: Option<u16>,
+}
+
 #[derive(Clone, Default, Debug)]
 pub struct Telemetry {
     pub cpu_temp_c: Option<u32>,
     pub cpu_usage_pct: Option<f32>,
-    pub cpu_fan_rpm: Option<u32>,
     pub gpu_temp_c: Option<u32>,
     pub gpu_usage_pct: Option<f32>,
     pub gpu_power_w: Option<f32>,
     pub gpu_clock_mhz: Option<u32>,
     pub gpu_vram_mb: Option<u32>,
     pub gpu_vram_total_mb: Option<u32>,
-    pub gpu_fan_rpm: Option<u32>,
     pub gpu_suspended: bool,
+    pub fans: Vec<FanInfo>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -853,7 +853,90 @@ impl eframe::App for NitroApp {
                         });
                     });
 
-                    ui.add_space(12.0);
+                    ui.add_space(10.0);
+
+                    // Detected Fans & Speeds (Model-agnostic)
+                    crystal_card(ui, false, |ui| {
+                        ui.label(
+                            RichText::new(s.fans_card_title)
+                                .size(13.5)
+                                .strong()
+                                .color(ACCENT_ICE),
+                        );
+                        ui.add_space(6.0);
+
+                        if tel.fans.is_empty() {
+                            ui.label(
+                                RichText::new(s.fans_none_detected)
+                                    .size(11.5)
+                                    .color(TEXT_MUTED),
+                            );
+                        } else {
+                            let max_temp = tel
+                                .cpu_temp_c
+                                .unwrap_or(0)
+                                .max(tel.gpu_temp_c.unwrap_or(0));
+
+                            ui.columns(tel.fans.len().min(4), |cols| {
+                                for (idx, fan) in tel.fans.iter().enumerate() {
+                                    let col = &mut cols[idx % cols.len()];
+                                    let effective_pct = fan.pct.or(match self.mode {
+                                        PowerMode::Turbo => Some(100),
+                                        PowerMode::Manual(f1, f2) => {
+                                            if idx == 0 {
+                                                Some(raw_to_pct(f1))
+                                            } else {
+                                                Some(raw_to_pct(f2))
+                                            }
+                                        }
+                                        PowerMode::Curve if max_temp > 0 => {
+                                            Some(self.fan_curve.evaluate(max_temp))
+                                        }
+                                        _ => None,
+                                    });
+
+                                    let speed_text = match (fan.rpm, effective_pct) {
+                                        (Some(rpm), Some(p)) => format!("{rpm} RPM ({p}%)"),
+                                        (Some(rpm), None) => format!("{rpm} RPM"),
+                                        (None, Some(p)) => format!("{p}%"),
+                                        (None, None) => s.fan_auto_label.to_string(),
+                                    };
+
+                                    col.horizontal(|ui| {
+                                        ui.label(
+                                            RichText::new(&fan.name)
+                                                .size(12.0)
+                                                .strong()
+                                                .color(TEXT_ICE),
+                                        );
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                ui.label(
+                                                    RichText::new(&speed_text)
+                                                        .size(12.0)
+                                                        .strong()
+                                                        .color(ACCENT_CYAN_SOFT),
+                                                );
+                                            },
+                                        );
+                                    });
+                                    let bar_val = effective_pct.unwrap_or(0) as f32 / 100.0;
+                                    col.add(
+                                        egui::ProgressBar::new(bar_val)
+                                            .desired_height(6.0)
+                                            .fill(if matches!(self.mode, PowerMode::Turbo) {
+                                                ACCENT_TURBO_GLOW
+                                            } else {
+                                                ACCENT_ICE
+                                            }),
+                                    );
+                                }
+                            });
+                        }
+                    });
+
+                    ui.add_space(10.0);
 
                     // Fine-grained Fan Controls
                     crystal_card(ui, false, |ui| {
@@ -886,11 +969,7 @@ impl eframe::App for NitroApp {
                                 }
                             }
                             let raw = pct_to_raw(self.cpu_fan_pct);
-                            let rpm_str = tel
-                                .cpu_fan_rpm
-                                .map(|r| format!("  •  {r} RPM"))
-                                .unwrap_or_default();
-                            ui.label(RichText::new(format!("({raw} / 2560{rpm_str})")).size(11.5).color(TEXT_MUTED));
+                            ui.label(RichText::new(format!("({raw} / 2560)")).size(11.5).color(TEXT_MUTED));
                         });
 
                         ui.add_space(4.0);
@@ -907,11 +986,7 @@ impl eframe::App for NitroApp {
                                 }
                             }
                             let raw = pct_to_raw(self.gpu_fan_pct);
-                            let rpm_str = tel
-                                .gpu_fan_rpm
-                                .map(|r| format!("  •  {r} RPM"))
-                                .unwrap_or_default();
-                            ui.label(RichText::new(format!("({raw} / 2560{rpm_str})")).size(11.5).color(TEXT_MUTED));
+                            ui.label(RichText::new(format!("({raw} / 2560)")).size(11.5).color(TEXT_MUTED));
                         });
 
                         if self.cpu_fan_pct < 20 || self.gpu_fan_pct < 20 {
