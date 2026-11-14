@@ -681,13 +681,18 @@ impl eframe::App for NitroApp {
                                         .size(13.0)
                                         .color(ACCENT_CYAN_SOFT),
                                     );
+                                    let vram_str = match (tel.gpu_vram_mb, tel.gpu_vram_total_mb) {
+                                        (Some(used), Some(total)) if total > 0 => {
+                                            let pct = (used as f32 / total as f32) * 100.0;
+                                            format!("{used} / {total} MB ({pct:.0}%)")
+                                        }
+                                        (Some(used), _) => format!("{used} MB"),
+                                        _ => "-- MB".to_string(),
+                                    };
                                     ui.label(
-                                        RichText::new(format!(
-                                            "Clock: {clock}  |  VRAM: {} MB",
-                                            tel.gpu_vram_mb.unwrap_or(0)
-                                        ))
-                                        .size(11.5)
-                                        .color(TEXT_MUTED),
+                                        RichText::new(format!("Clock: {clock}  |  VRAM: {vram_str}"))
+                                            .size(11.5)
+                                            .color(TEXT_MUTED),
                                     );
                                 });
                             });

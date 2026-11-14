@@ -311,7 +311,7 @@ pub fn read_telemetry(cpu_sampler: &mut CpuSampler) -> Telemetry {
 
     if let Ok(output) = Command::new("nvidia-smi")
         .args([
-            "--query-gpu=utilization.gpu,temperature.gpu,power.draw,clocks.current.graphics,memory.used",
+            "--query-gpu=utilization.gpu,temperature.gpu,power.draw,clocks.current.graphics,memory.used,memory.total",
             "--format=csv,noheader,nounits",
         ])
         .output()
@@ -319,12 +319,13 @@ pub fn read_telemetry(cpu_sampler: &mut CpuSampler) -> Telemetry {
         if output.status.success() {
             let text = String::from_utf8_lossy(&output.stdout);
             let parts: Vec<&str> = text.trim().split(',').collect();
-            if parts.len() == 5 {
+            if parts.len() == 6 {
                 tel.gpu_usage_pct = parts[0].trim().parse::<f32>().ok();
                 tel.gpu_temp_c = parts[1].trim().parse::<u32>().ok();
                 tel.gpu_power_w = parts[2].trim().parse::<f32>().ok();
                 tel.gpu_clock_mhz = parts[3].trim().parse::<u32>().ok();
                 tel.gpu_vram_mb = parts[4].trim().parse::<u32>().ok();
+                tel.gpu_vram_total_mb = parts[5].trim().parse::<u32>().ok();
             }
         }
     }

@@ -87,6 +87,7 @@ pub struct Telemetry {
     pub gpu_power_w: Option<f32>,
     pub gpu_clock_mhz: Option<u32>,
     pub gpu_vram_mb: Option<u32>,
+    pub gpu_vram_total_mb: Option<u32>,
     pub gpu_fan_rpm: Option<u32>,
     pub gpu_suspended: bool,
 }
