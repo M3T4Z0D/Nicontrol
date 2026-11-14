@@ -59,6 +59,29 @@ fn remove_tray_pid() {
     let _ = fs::remove_file(tray_pid_path());
 }
 
+fn close_gui_if_running() {
+    let gui_pid = crate::hardware::state_file_path()
+        .parent()
+        .map(|p| p.join("gui.pid"))
+        .unwrap_or_else(|| PathBuf::from("/tmp/nicontrol-gui.pid"));
+
+    let Ok(pid_str) = fs::read_to_string(&gui_pid) else {
+        return;
+    };
+    let Ok(pid) = pid_str.trim().parse::<u32>() else {
+        return;
+    };
+    if let Ok(cmdline) = fs::read(format!("/proc/{pid}/cmdline")) {
+        let text = String::from_utf8_lossy(&cmdline);
+        if text.contains("nicontrol") && !text.contains("--tray") {
+            let _ = Command::new("kill")
+                .args(["-TERM", &pid.to_string()])
+                .status();
+        }
+    }
+    let _ = fs::remove_file(gui_pid);
+}
+
 struct TrayState {
     mode: PowerMode,
     telemetry: Telemetry,
@@ -318,6 +341,7 @@ impl Tray for NitroTray {
                 label: s.tray_quit.to_string(),
                 icon_name: "application-exit".to_string(),
                 activate: Box::new(|_| {
+                    close_gui_if_running();
                     remove_tray_pid();
                     std::process::exit(0);
                 }),
