@@ -38,13 +38,27 @@ pub fn is_tray_running() -> bool {
     text.contains("nicontrol") && text.contains("--tray")
 }
 
+fn resolve_exe_path() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        let s = exe.to_string_lossy();
+        if let Some(clean) = s.strip_suffix(" (deleted)") {
+            let p = PathBuf::from(clean);
+            if p.exists() {
+                return p;
+            }
+        }
+        if exe.exists() {
+            return exe;
+        }
+    }
+    PathBuf::from("nicontrol")
+}
+
 pub fn ensure_tray_running() {
     if is_tray_running() {
         return;
     }
-    if let Ok(exe) = std::env::current_exe() {
-        let _ = Command::new(exe).arg("--tray").spawn();
-    }
+    let _ = Command::new(resolve_exe_path()).arg("--tray").spawn();
 }
 
 fn write_tray_pid() {
@@ -92,8 +106,9 @@ struct NitroTray {
 }
 
 fn open_gui_window() {
-    if let Ok(exe) = std::env::current_exe() {
-        let _ = Command::new(exe).arg("--gui").spawn();
+    if let Err(e) = Command::new(resolve_exe_path()).arg("--gui").spawn() {
+        eprintln!("Nicontrol erro ao abrir GUI: {e}");
+        notify(strings(load_lang()).notify_error_title, &e.to_string());
     }
 }
 
