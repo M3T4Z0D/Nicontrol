@@ -145,16 +145,9 @@ src/
 
 ---
 
-## Contributing & Releases
+## Contributing
 
 Contributions are very welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on submitting issues and pull requests.
-
-To cut a new release via GitHub Actions (`.github/workflows/release.yml`, built on `ubuntu-22.04` for broad `glibc` compatibility):
-
-```bash
-git tag v0.2.0
-git push origin v0.2.0
-```
 
 ## License
 
