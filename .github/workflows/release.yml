@@ -40,7 +40,7 @@ jobs:
           mkdir -p "$PKG_DIR/assets"
           cp target/release/nicontrol "$PKG_DIR/"
           cp install.sh README.md LICENSE "$PKG_DIR/"
-          cp assets/nicontrol.desktop assets/nicontrol.png assets/99-nicontrol.rules "$PKG_DIR/assets/"
+          cp assets/nicontrol.desktop assets/nicontrol.png assets/nicontrol.svg assets/99-nicontrol.rules "$PKG_DIR/assets/"
           chmod +x "$PKG_DIR/nicontrol" "$PKG_DIR/install.sh"
           zip -r "${PKG_DIR}.zip" "$PKG_DIR"
 

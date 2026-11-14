@@ -259,6 +259,48 @@ fn draw_crystal_backdrop(painter: &egui::Painter, rect: egui::Rect, t: f32, is_t
     }
 }
 
+/// Renders a compact octagonal Nicontrol crystal badge in the header.
+fn draw_header_emblem(ui: &mut egui::Ui, t: f32, mode: PowerMode) {
+    let size = 34.0_f32;
+    let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+    let c = rect.center();
+    let r = size * 0.44;
+    let k = r * 0.42;
+
+    let oct = vec![
+        Pos2::new(c.x - k, c.y - r),
+        Pos2::new(c.x + k, c.y - r),
+        Pos2::new(c.x + r, c.y - k),
+        Pos2::new(c.x + r, c.y + k),
+        Pos2::new(c.x + k, c.y + r),
+        Pos2::new(c.x - k, c.y + r),
+        Pos2::new(c.x - r, c.y + k),
+        Pos2::new(c.x - r, c.y - k),
+    ];
+    let rim = match mode {
+        PowerMode::Turbo => ACCENT_TURBO_GLOW,
+        PowerMode::Curve => Color32::from_rgb(45, 212, 191),
+        PowerMode::Manual(_, _) => ACCENT_INDIGO,
+        PowerMode::Auto => holo_color(t * 1.2, 230),
+    };
+    painter.add(egui::Shape::convex_polygon(
+        oct,
+        Color32::from_rgb(11, 24, 48),
+        Stroke::new(1.5_f32, rim),
+    ));
+
+    let s = size * 0.025;
+    let p = |dx: f32, dy: f32| Pos2::new(c.x + dx * s, c.y + dy * s);
+    let left = vec![p(-9.0, -10.0), p(-4.5, -10.0), p(-4.5, 10.0), p(-9.0, 8.0)];
+    let right = vec![p(4.5, -8.0), p(9.0, -10.0), p(9.0, 10.0), p(4.5, 10.0)];
+    let diag = vec![p(-8.5, -10.0), p(-4.0, -10.0), p(8.5, 10.0), p(4.0, 10.0)];
+
+    painter.add(egui::Shape::convex_polygon(left, ACCENT_ICE, Stroke::NONE));
+    painter.add(egui::Shape::convex_polygon(right, ACCENT_INDIGO, Stroke::NONE));
+    painter.add(egui::Shape::convex_polygon(diag, TEXT_ICE, Stroke::NONE));
+}
+
 /// Renders the centered holographic Acer Nitro "N" emblem with rotating crystal facets.
 fn draw_holographic_nitro_emblem(ui: &mut egui::Ui, t: f32, mode: PowerMode) {
     let desired = Vec2::new(ui.available_width(), 54.0);
@@ -415,6 +457,8 @@ impl eframe::App for NitroApp {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     // Header
                     ui.horizontal(|ui| {
+                        draw_header_emblem(ui, t, self.mode);
+                        ui.add_space(6.0);
                         ui.vertical(|ui| {
                             ui.horizontal(|ui| {
                                 ui.label(
@@ -1165,31 +1209,32 @@ fn is_gui_already_running() -> bool {
 fn build_window_icon() -> egui::IconData {
     const SIZE: usize = 64;
     let mut rgba = Vec::with_capacity(SIZE * SIZE * 4);
-    let center = (SIZE as f32 - 1.0) / 2.0;
-    let radius = 29.5_f32;
+    let in_oct = |x: usize, y: usize, m: usize| -> bool {
+        if x < m || x > SIZE - 1 - m || y < m || y > SIZE - 1 - m {
+            return false;
+        }
+        let c = 16usize;
+        if (x - m) + (y - m) < c { return false; }
+        if (SIZE - 1 - m - x) + (y - m) < c { return false; }
+        if (x - m) + (SIZE - 1 - m - y) < c { return false; }
+        if (SIZE - 1 - m - x) + (SIZE - 1 - m - y) < c { return false; }
+        true
+    };
     for y in 0..SIZE {
         for x in 0..SIZE {
-            let dx = x as f32 - center;
-            let dy = y as f32 - center;
-            let r = (dx * dx + dy * dy).sqrt();
-            if r <= radius {
-                let alpha = if r > radius - 1.0 {
-                    ((radius - r).clamp(0.0, 1.0) * 255.0) as u8
-                } else {
-                    255
+            if in_oct(x, y, 4) {
+                let in_left = (18..=24).contains(&x) && (17..=47).contains(&y);
+                let in_right = (40..=46).contains(&x) && (17..=47).contains(&y);
+                let in_diag = (18..=46).contains(&x) && (17..=47).contains(&y) && {
+                    let ey = 17.0 + (x - 18) as f32 * (30.0 / 28.0);
+                    (y as f32 - ey).abs() <= 3.3
                 };
-                let in_left = (18..=24).contains(&x) && (16..=48).contains(&y);
-                let in_right = (40..=46).contains(&x) && (16..=48).contains(&y);
-                let in_diag = (20..=44).contains(&x) && (16..=48).contains(&y) && {
-                    let ey = 16.0 + (x - 20) as f32 * (32.0 / 24.0);
-                    (y as f32 - ey).abs() <= 3.2
-                };
-                if in_left || in_right || in_diag {
-                    rgba.extend_from_slice(&[90, 210, 255, alpha]);
-                } else if r >= 26.0 {
-                    rgba.extend_from_slice(&[56, 189, 248, alpha]);
+                if in_diag {
+                    rgba.extend_from_slice(&[240, 249, 255, 255]);
+                } else if in_left || in_right || !in_oct(x, y, 6) {
+                    rgba.extend_from_slice(&[56, 189, 248, 255]);
                 } else {
-                    rgba.extend_from_slice(&[13, 24, 46, alpha]);
+                    rgba.extend_from_slice(&[11, 24, 48, 255]);
                 }
             } else {
                 rgba.extend_from_slice(&[0, 0, 0, 0]);

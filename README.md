@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/nicontrol.svg" width="88" height="88" alt="Nicontrol Logo" />
+
 # Nicontrol
 
 **Lightweight, native Rust Control Center & System Tray for Nitro laptops on Linux**

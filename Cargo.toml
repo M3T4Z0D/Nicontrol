@@ -28,6 +28,7 @@ assets = [
     ["target/release/nicontrol", "usr/bin/", "755"],
     ["assets/nicontrol.desktop", "usr/share/applications/", "644"],
     ["assets/nicontrol.png", "usr/share/icons/hicolor/256x256/apps/nicontrol.png", "644"],
+    ["assets/nicontrol.svg", "usr/share/icons/hicolor/scalable/apps/nicontrol.svg", "644"],
     ["assets/99-nicontrol.rules", "lib/udev/rules.d/99-nicontrol.rules", "644"],
     ["README.md", "usr/share/doc/nicontrol/README.md", "644"],
 ]

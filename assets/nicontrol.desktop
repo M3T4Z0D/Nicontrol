@@ -6,3 +6,4 @@ Exec=nicontrol
 Icon=nicontrol
 Terminal=false
 Categories=System;Utility;
+StartupWMClass=Nicontrol

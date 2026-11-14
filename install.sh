@@ -5,8 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="$HOME/.local/bin"
 APP_DIR="$HOME/.local/share/applications"
 ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
+SVG_ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
 
-mkdir -p "$BIN_DIR" "$APP_DIR" "$ICON_DIR"
+mkdir -p "$BIN_DIR" "$APP_DIR" "$ICON_DIR" "$SVG_ICON_DIR"
 
 if [ -f "$SCRIPT_DIR/nicontrol" ] && [ ! -f "$SCRIPT_DIR/Cargo.toml" ]; then
     echo "Installing pre-built nicontrol binary..."
@@ -28,6 +29,9 @@ chmod +x "$BIN_DIR/nicontrol"
 if [ -f "$SCRIPT_DIR/assets/nicontrol.png" ]; then
     cp "$SCRIPT_DIR/assets/nicontrol.png" "$ICON_DIR/nicontrol.png"
 fi
+if [ -f "$SCRIPT_DIR/assets/nicontrol.svg" ]; then
+    cp "$SCRIPT_DIR/assets/nicontrol.svg" "$SVG_ICON_DIR/nicontrol.svg"
+fi
 
 cat > "$APP_DIR/nicontrol.desktop" <<EOF
 [Desktop Entry]
@@ -38,6 +42,7 @@ Exec=$BIN_DIR/nicontrol
 Icon=nicontrol
 Terminal=false
 Categories=System;Utility;
+StartupWMClass=Nicontrol
 EOF
 
 echo "Installed binary to: $BIN_DIR/nicontrol"
