@@ -136,6 +136,9 @@ pub struct Strings {
     pub tray_100: &'static str,
     pub tray_quit: &'static str,
 
+    pub update_available: &'static str,
+    pub update_download: &'static str,
+
     pub footer_disclaimer: &'static str,
 }
 
@@ -213,6 +216,9 @@ const EN_STRINGS: Strings = Strings {
     tray_100: "100% (Max)",
     tray_quit: "Quit",
 
+    update_available: "New update available",
+    update_download: "Download Release",
+
     footer_disclaimer: "Unofficial community open-source tool (not affiliated with Acer Inc.). Use at your own risk.",
 };
 
@@ -289,6 +295,9 @@ const PT_BR_STRINGS: Strings = Strings {
     tray_75: "75% (Forte)",
     tray_100: "100% (Turbina Máxima)",
     tray_quit: "Sair",
+
+    update_available: "Nova atualização disponível",
+    update_download: "Baixar Release",
 
     footer_disclaimer: "Projeto open-source comunitário e não oficial (sem afiliação com a Acer Inc.). Use por sua conta e risco.",
 };

@@ -2,6 +2,7 @@ mod gui;
 mod hardware;
 mod i18n;
 mod tray;
+mod updater;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

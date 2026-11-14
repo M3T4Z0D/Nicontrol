@@ -5,6 +5,7 @@ use crate::hardware::{
     Telemetry,
 };
 use crate::i18n::{load_lang, save_lang, strings, Lang};
+use crate::updater::{check_for_update, open_url, UpdateInfo, CURRENT_VERSION};
 use eframe::egui;
 use egui::{Color32, CornerRadius, Pos2, RichText, Stroke, Vec2};
 use egui_plot::{Legend, Line, Plot, PlotPoints};
@@ -35,6 +36,7 @@ const HISTORY_LEN: usize = 60;
 struct SharedGuiData {
     synced_mode: PowerMode,
     telemetry: Telemetry,
+    update_info: Option<UpdateInfo>,
     cpu_usage_hist: VecDeque<f64>,
     gpu_usage_hist: VecDeque<f64>,
     gpu_power_hist: VecDeque<f64>,
@@ -81,12 +83,22 @@ impl NitroApp {
         let shared = Arc::new(Mutex::new(SharedGuiData {
             synced_mode: initial_mode,
             telemetry: initial_tel,
+            update_info: None,
             cpu_usage_hist: VecDeque::from(vec![init_cpu_u; HISTORY_LEN]),
             gpu_usage_hist: VecDeque::from(vec![init_gpu_u; HISTORY_LEN]),
             gpu_power_hist: VecDeque::from(vec![init_gpu_p; HISTORY_LEN]),
             cpu_temp_hist: VecDeque::from(vec![init_cpu_t; HISTORY_LEN]),
             gpu_temp_hist: VecDeque::from(vec![init_gpu_t; HISTORY_LEN]),
         }));
+
+        let shared_upd = Arc::clone(&shared);
+        let ctx_upd = cc.egui_ctx.clone();
+        thread::spawn(move || {
+            if let Some(info) = check_for_update() {
+                shared_upd.lock().unwrap().update_info = Some(info);
+                ctx_upd.request_repaint();
+            }
+        });
 
         let shared_bg = Arc::clone(&shared);
         let ctx_bg = cc.egui_ctx.clone();
@@ -370,11 +382,12 @@ impl eframe::App for NitroApp {
             return;
         }
 
-        let (synced_mode, tel, cpu_hist, gpu_hist, power_hist, cpu_t_hist, gpu_t_hist) = {
+        let (synced_mode, tel, update_info, cpu_hist, gpu_hist, power_hist, cpu_t_hist, gpu_t_hist) = {
             let d = self.shared.lock().unwrap();
             (
                 d.synced_mode,
                 d.telemetry.clone(),
+                d.update_info.clone(),
                 d.cpu_usage_hist.clone(),
                 d.gpu_usage_hist.clone(),
                 d.gpu_power_hist.clone(),
@@ -416,6 +429,12 @@ impl eframe::App for NitroApp {
                                                 .color(ACCENT_CYAN_SOFT),
                                         );
                                     });
+                                ui.add_space(4.0);
+                                ui.label(
+                                    RichText::new(format!("v{CURRENT_VERSION}"))
+                                        .size(11.0)
+                                        .color(TEXT_MUTED),
+                                );
                             });
                             ui.label(
                                 RichText::new(format!("{}: {}", s.active_profile, self.mode.label(self.lang)))
@@ -464,7 +483,37 @@ impl eframe::App for NitroApp {
                         });
                     });
 
-                    ui.add_space(14.0);
+                    ui.add_space(10.0);
+
+                    if let Some(upd) = &update_info {
+                        egui::Frame::NONE
+                            .fill(Color32::from_rgba_premultiplied(14, 52, 82, 235))
+                            .stroke(Stroke::new(1.0_f32, ACCENT_ICE))
+                            .corner_radius(CornerRadius::same(8))
+                            .inner_margin(egui::Margin::symmetric(12, 8))
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "✨ {}: {}",
+                                            s.update_available, upd.latest_version
+                                        ))
+                                        .size(12.5)
+                                        .strong()
+                                        .color(ACCENT_CYAN_SOFT),
+                                    );
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            if ui.button(s.update_download).clicked() {
+                                                open_url(&upd.release_url);
+                                            }
+                                        },
+                                    );
+                                });
+                            });
+                        ui.add_space(10.0);
+                    }
 
                     // Power Mode Cards (Crystal Styled)
                     ui.columns(4, |cols| {
