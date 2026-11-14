@@ -95,11 +95,17 @@ pub struct Strings {
     pub curve_save_apply: &'static str,
 
     pub cpu_usage: &'static str,
+    pub cpu_clock: &'static str,
+    pub ram_label: &'static str,
     pub gpu_power: &'static str,
     pub gpu_usage: &'static str,
     pub gpu_suspended: &'static str,
     pub cpu_chart_title: &'static str,
     pub gpu_chart_title: &'static str,
+
+    pub auto_game_mode: &'static str,
+    pub battery_limit_80: &'static str,
+    pub kbd_backlight: &'static str,
 
     pub fine_fan_title: &'static str,
     pub sync_fans: &'static str,
@@ -175,11 +181,17 @@ const EN_STRINGS: Strings = Strings {
     curve_save_apply: "Save & Activate Curve",
 
     cpu_usage: "Usage",
+    cpu_clock: "Clock",
+    ram_label: "RAM",
     gpu_power: "Power",
     gpu_usage: "Usage",
     gpu_suspended: "Suspended (RTD3)",
     cpu_chart_title: "CPU — Usage & Temperature (60s)",
     gpu_chart_title: "GPU — Usage, Power & Temp (60s)",
+
+    auto_game_mode: "Auto-Turbo on GameMode",
+    battery_limit_80: "Limit Battery Charge to 80%",
+    kbd_backlight: "Keyboard Backlight:",
 
     fine_fan_title: "Fine-Grained Fan Control",
     sync_fans: "Sync CPU + GPU",
@@ -255,11 +267,17 @@ const PT_BR_STRINGS: Strings = Strings {
     curve_save_apply: "Salvar e Ativar Curva",
 
     cpu_usage: "Uso",
+    cpu_clock: "Clock",
+    ram_label: "RAM",
     gpu_power: "Potência",
     gpu_usage: "Uso",
     gpu_suspended: "Suspensa (RTD3)",
     cpu_chart_title: "CPU — Uso & Temperatura (60s)",
     gpu_chart_title: "GPU — Uso, Potência & Temp (60s)",
+
+    auto_game_mode: "Auto-Turbo no GameMode",
+    battery_limit_80: "Limitar Bateria em 80%",
+    kbd_backlight: "Brilho do Teclado:",
 
     fine_fan_title: "Controle Fino das Ventoinhas",
     sync_fans: "Sincronizar CPU + GPU",

@@ -1,7 +1,7 @@
 use crate::hardware::{
     apply_auto, apply_curve_fans_pct, apply_curve_mode, apply_manual_fans, apply_turbo,
-    load_curve, load_saved_mode, notify, pct_to_raw, read_telemetry, CpuSampler, PowerMode,
-    Telemetry,
+    is_auto_game_enabled, is_gamemode_active, load_curve, load_saved_mode, notify, pct_to_raw,
+    read_telemetry, reapply_saved_mode, CpuSampler, PowerMode, Telemetry,
 };
 use crate::i18n::{load_lang, strings};
 use ksni::blocking::TrayMethods;
@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime};
 
 fn tray_pid_path() -> PathBuf {
     crate::hardware::state_file_path()
@@ -395,10 +395,47 @@ pub fn run_tray() {
     thread::spawn(move || {
         let mut last_curve_pct: Option<u16> = None;
         let mut last_curve_temp: Option<u32> = None;
+        let mut last_wall = SystemTime::now();
+        let mut last_mono = Instant::now();
+        let mut auto_game_active = false;
+        let mut pre_game_mode = PowerMode::Auto;
 
         loop {
+            // Detect resume from suspend (wall clock jumped significantly ahead of monotonic)
+            let now_wall = SystemTime::now();
+            let now_mono = Instant::now();
+            if let Ok(wall_elapsed) = now_wall.duration_since(last_wall) {
+                let mono_elapsed = now_mono.duration_since(last_mono);
+                if wall_elapsed > mono_elapsed + Duration::from_secs(8) {
+                    reapply_saved_mode();
+                }
+            }
+            last_wall = now_wall;
+            last_mono = now_mono;
+
             let tel = read_telemetry(&mut sampler);
-            let synced_mode = load_saved_mode();
+            let mut synced_mode = load_saved_mode();
+
+            // Auto-Turbo on GameMode
+            if is_auto_game_enabled() {
+                let gm_on = is_gamemode_active();
+                if gm_on && !auto_game_active {
+                    if synced_mode == PowerMode::Auto {
+                        pre_game_mode = synced_mode;
+                        if apply_turbo().is_ok() {
+                            synced_mode = PowerMode::Turbo;
+                            auto_game_active = true;
+                        }
+                    }
+                } else if !gm_on && auto_game_active {
+                    if pre_game_mode == PowerMode::Auto && apply_auto().is_ok() {
+                        synced_mode = PowerMode::Auto;
+                    }
+                    auto_game_active = false;
+                }
+            } else {
+                auto_game_active = false;
+            }
 
             if synced_mode == PowerMode::Curve {
                 let max_temp = tel

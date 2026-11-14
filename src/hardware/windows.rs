@@ -1,4 +1,4 @@
-use super::{HardwareInfo, Telemetry};
+use super::{BatteryLimitState, HardwareInfo, KbdBacklightState, Telemetry};
 
 pub fn detect_hardware_info() -> HardwareInfo {
     HardwareInfo {
@@ -44,4 +44,26 @@ impl CpuSampler {
 
 pub fn read_telemetry(_cpu_sampler: &mut CpuSampler) -> Telemetry {
     Telemetry::default()
+}
+
+pub fn reapply_saved_mode() {}
+
+pub fn get_battery_limit_state() -> BatteryLimitState {
+    BatteryLimitState::default()
+}
+
+pub fn set_battery_limit_80(_enable: bool) -> Result<(), String> {
+    Err("Not implemented on Windows yet.".to_string())
+}
+
+pub fn get_kbd_backlight_state() -> KbdBacklightState {
+    KbdBacklightState::default()
+}
+
+pub fn set_kbd_brightness(_brightness: u32) -> Result<(), String> {
+    Err("Not implemented on Windows yet.".to_string())
+}
+
+pub fn is_gamemode_active() -> bool {
+    false
 }

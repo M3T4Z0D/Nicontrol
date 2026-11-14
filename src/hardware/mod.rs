@@ -6,12 +6,16 @@ mod windows;
 #[cfg(target_os = "linux")]
 pub use linux::{
     apply_auto, apply_curve_fans_pct, apply_manual_fans, apply_turbo, detect_hardware_info,
-    is_autostart_enabled, notify, read_telemetry, set_autostart, CpuSampler,
+    get_battery_limit_state, get_kbd_backlight_state, is_autostart_enabled, is_gamemode_active,
+    notify, read_telemetry, reapply_saved_mode, set_autostart, set_battery_limit_80,
+    set_kbd_brightness, CpuSampler,
 };
 #[cfg(target_os = "windows")]
 pub use windows::{
     apply_auto, apply_curve_fans_pct, apply_manual_fans, apply_turbo, detect_hardware_info,
-    is_autostart_enabled, notify, read_telemetry, set_autostart, CpuSampler,
+    get_battery_limit_state, get_kbd_backlight_state, is_autostart_enabled, is_gamemode_active,
+    notify, read_telemetry, reapply_saved_mode, set_autostart, set_battery_limit_80,
+    set_kbd_brightness, CpuSampler,
 };
 
 use crate::i18n::{load_lang, strings, Lang};
@@ -84,10 +88,26 @@ pub struct FanInfo {
     pub pct: Option<u16>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BatteryLimitState {
+    pub supported: bool,
+    pub enabled_80: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct KbdBacklightState {
+    pub supported: bool,
+    pub brightness: u32,
+    pub max_brightness: u32,
+}
+
 #[derive(Clone, Default, Debug)]
 pub struct Telemetry {
     pub cpu_temp_c: Option<u32>,
     pub cpu_usage_pct: Option<f32>,
+    pub cpu_freq_mhz: Option<u32>,
+    pub ram_used_mb: Option<u32>,
+    pub ram_total_mb: Option<u32>,
     pub gpu_temp_c: Option<u32>,
     pub gpu_usage_pct: Option<f32>,
     pub gpu_power_w: Option<f32>,
@@ -209,6 +229,30 @@ pub fn apply_curve_mode() -> Result<(), String> {
     save_mode(PowerMode::Curve);
     notify("Nicontrol", strings(load_lang()).notify_curve);
     Ok(())
+}
+
+pub fn auto_game_config_path() -> Option<PathBuf> {
+    if let Some(cfg) = std::env::var_os("XDG_CONFIG_HOME") {
+        return Some(PathBuf::from(cfg).join("nicontrol").join("auto_game"));
+    }
+    let home = std::env::var_os("HOME")?;
+    Some(PathBuf::from(home).join(".config/nicontrol/auto_game"))
+}
+
+pub fn is_auto_game_enabled() -> bool {
+    auto_game_config_path()
+        .and_then(|p| fs::read_to_string(p).ok())
+        .map(|s| s.trim() == "1")
+        .unwrap_or(false)
+}
+
+pub fn set_auto_game_enabled(enabled: bool) {
+    if let Some(path) = auto_game_config_path() {
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = fs::write(path, if enabled { "1" } else { "0" });
+    }
 }
 
 pub fn state_file_path() -> PathBuf {

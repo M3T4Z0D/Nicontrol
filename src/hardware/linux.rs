@@ -1,5 +1,6 @@
 use super::{
-    pct_to_raw, raw_to_pct, save_mode, FanInfo, HardwareInfo, PowerMode, Telemetry,
+    load_saved_mode, pct_to_raw, raw_to_pct, save_mode, BatteryLimitState, FanInfo, HardwareInfo,
+    KbdBacklightState, PowerMode, Telemetry,
 };
 use crate::i18n::{load_lang, strings, Lang};
 use std::fs;
@@ -159,6 +160,122 @@ pub fn apply_manual_fans(cpu_speed: u16, gpu_speed: u16) -> Result<(), String> {
 pub fn apply_curve_fans_pct(pct: u16) -> Result<(), String> {
     let raw = pct_to_raw(pct);
     write_manual_fans_raw(raw, raw)
+}
+
+pub fn reapply_saved_mode() {
+    match load_saved_mode() {
+        PowerMode::Turbo => {
+            let _ = apply_turbo();
+        }
+        PowerMode::Auto => {
+            let _ = apply_auto();
+        }
+        PowerMode::Manual(f1, f2) => {
+            let _ = write_manual_fans_raw(f1, f2);
+        }
+        PowerMode::Curve => {
+            // Curve loop in tray will apply on next tick
+        }
+    }
+}
+
+fn find_battery_threshold_path() -> Option<(PathBuf, bool)> {
+    // Returns (path, is_linuwu_boolean)
+    for p in [
+        "/sys/devices/platform/acer-wmi/nitro_sense/battery_limiter",
+        "/sys/devices/platform/acer-wmi/predator_sense/battery_limiter",
+    ] {
+        let pb = PathBuf::from(p);
+        if pb.exists() {
+            return Some((pb, true));
+        }
+    }
+    if let Ok(entries) = fs::read_dir("/sys/class/power_supply") {
+        for entry in entries.flatten() {
+            let p = entry.path().join("charge_control_end_threshold");
+            if p.exists() {
+                return Some((p, false));
+            }
+        }
+    }
+    None
+}
+
+pub fn get_battery_limit_state() -> BatteryLimitState {
+    let Some((path, is_bool)) = find_battery_threshold_path() else {
+        return BatteryLimitState::default();
+    };
+    let val = fs::read_to_string(path)
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .unwrap_or(100);
+    let enabled_80 = if is_bool { val == 1 } else { val <= 80 };
+    BatteryLimitState {
+        supported: true,
+        enabled_80,
+    }
+}
+
+pub fn set_battery_limit_80(enable: bool) -> Result<(), String> {
+    let Some((path, is_bool)) = find_battery_threshold_path() else {
+        return Err("Battery charge limit not supported by current kernel driver.".to_string());
+    };
+    let val = if is_bool {
+        if enable { "1" } else { "0" }
+    } else if enable {
+        "80"
+    } else {
+        "100"
+    };
+    write_device(&path.to_string_lossy(), val)
+}
+
+fn find_kbd_backlight_dir() -> Option<PathBuf> {
+    let entries = fs::read_dir("/sys/class/leds").ok()?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.contains("kbd_backlight") {
+            return Some(entry.path());
+        }
+    }
+    None
+}
+
+pub fn get_kbd_backlight_state() -> KbdBacklightState {
+    let Some(dir) = find_kbd_backlight_dir() else {
+        return KbdBacklightState::default();
+    };
+    let brightness = fs::read_to_string(dir.join("brightness"))
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .unwrap_or(0);
+    let max_brightness = fs::read_to_string(dir.join("max_brightness"))
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .unwrap_or(100)
+        .max(1);
+    KbdBacklightState {
+        supported: true,
+        brightness,
+        max_brightness,
+    }
+}
+
+pub fn set_kbd_brightness(brightness: u32) -> Result<(), String> {
+    let Some(dir) = find_kbd_backlight_dir() else {
+        return Err("Keyboard backlight sysfs not found.".to_string());
+    };
+    write_device(&dir.join("brightness").to_string_lossy(), &brightness.to_string())
+}
+
+pub fn is_gamemode_active() -> bool {
+    Command::new("gamemoded")
+        .arg("-s")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).contains("gamemode is active"))
+        .unwrap_or(false)
 }
 
 pub fn notify(summary: &str, body: &str) {
@@ -330,13 +447,94 @@ pub fn read_fans() -> Vec<FanInfo> {
     fans
 }
 
+pub fn read_cpu_freq_mhz() -> Option<u32> {
+    let raw = fs::read_to_string("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq").ok()?;
+    let khz = raw.trim().parse::<u32>().ok()?;
+    Some(khz / 1000)
+}
+
+pub fn read_ram_mb() -> (Option<u32>, Option<u32>) {
+    let Ok(content) = fs::read_to_string("/proc/meminfo") else {
+        return (None, None);
+    };
+    let mut total_kb: Option<u64> = None;
+    let mut avail_kb: Option<u64> = None;
+    for line in content.lines() {
+        if let Some(rest) = line.strip_prefix("MemTotal:") {
+            total_kb = rest.split_whitespace().next().and_then(|s| s.parse::<u64>().ok());
+        } else if let Some(rest) = line.strip_prefix("MemAvailable:") {
+            avail_kb = rest.split_whitespace().next().and_then(|s| s.parse::<u64>().ok());
+        }
+        if total_kb.is_some() && avail_kb.is_some() {
+            break;
+        }
+    }
+    match (total_kb, avail_kb) {
+        (Some(t), Some(a)) => {
+            let used_mb = (t.saturating_sub(a) / 1024) as u32;
+            let total_mb = (t / 1024) as u32;
+            (Some(used_mb), Some(total_mb))
+        }
+        _ => (None, None),
+    }
+}
+
+fn read_drm_gpu_telemetry(tel: &mut Telemetry) {
+    let Ok(entries) = fs::read_dir("/sys/class/drm") else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.starts_with("card") || name.contains('-') {
+            continue;
+        }
+        let dev = entry.path().join("device");
+        let vendor = fs::read_to_string(dev.join("vendor")).unwrap_or_default();
+        // Skip NVIDIA (handled by nvidia-smi) and look for AMD (0x1002) or Intel (0x8086)
+        if vendor.trim() == "0x10de" {
+            continue;
+        }
+        if let Ok(busy) = fs::read_to_string(dev.join("gpu_busy_percent")) {
+            if let Ok(pct) = busy.trim().parse::<f32>() {
+                tel.gpu_usage_pct = Some(pct);
+            }
+        }
+        if let Ok(hwmon_dir) = fs::read_dir(dev.join("hwmon")) {
+            for hm in hwmon_dir.flatten() {
+                let hp = hm.path();
+                if tel.gpu_temp_c.is_none() {
+                    if let Ok(t) = fs::read_to_string(hp.join("temp1_input")) {
+                        if let Ok(mc) = t.trim().parse::<u32>() {
+                            tel.gpu_temp_c = Some(mc / 1000);
+                        }
+                    }
+                }
+                if tel.gpu_power_w.is_none() {
+                    if let Ok(pw) = fs::read_to_string(hp.join("power1_average")) {
+                        if let Ok(uw) = pw.trim().parse::<f32>() {
+                            tel.gpu_power_w = Some(uw / 1_000_000.0);
+                        }
+                    }
+                }
+            }
+        }
+        if tel.gpu_usage_pct.is_some() || tel.gpu_temp_c.is_some() {
+            break;
+        }
+    }
+}
+
 pub fn read_telemetry(cpu_sampler: &mut CpuSampler) -> Telemetry {
     let fans = read_fans();
     let suspended = is_nvidia_gpu_suspended();
+    let (ram_used_mb, ram_total_mb) = read_ram_mb();
 
     let mut tel = Telemetry {
         cpu_temp_c: read_cpu_temp(),
         cpu_usage_pct: cpu_sampler.sample_usage(),
+        cpu_freq_mhz: read_cpu_freq_mhz(),
+        ram_used_mb,
+        ram_total_mb,
         gpu_suspended: suspended,
         fans,
         ..Default::default()
@@ -347,6 +545,7 @@ pub fn read_telemetry(cpu_sampler: &mut CpuSampler) -> Telemetry {
         return tel;
     }
 
+    let mut got_nvidia = false;
     if let Ok(output) = Command::new("nvidia-smi")
         .args([
             "--query-gpu=utilization.gpu,temperature.gpu,power.draw,clocks.current.graphics,memory.used,memory.total",
@@ -364,8 +563,13 @@ pub fn read_telemetry(cpu_sampler: &mut CpuSampler) -> Telemetry {
                 tel.gpu_clock_mhz = parts[3].trim().parse::<u32>().ok();
                 tel.gpu_vram_mb = parts[4].trim().parse::<u32>().ok();
                 tel.gpu_vram_total_mb = parts[5].trim().parse::<u32>().ok();
+                got_nvidia = true;
             }
         }
+    }
+
+    if !got_nvidia {
+        read_drm_gpu_telemetry(&mut tel);
     }
 
     tel

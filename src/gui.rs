@@ -1,8 +1,10 @@
 use crate::hardware::{
     apply_auto, apply_curve_mode, apply_manual_fans, apply_turbo, detect_hardware_info,
-    is_autostart_enabled, load_curve, load_saved_mode, pct_to_raw, raw_to_pct, read_telemetry,
-    save_curve, set_autostart, state_file_path, CpuSampler, FanCurve, HardwareInfo, PowerMode,
-    Telemetry,
+    get_battery_limit_state, get_kbd_backlight_state, is_auto_game_enabled, is_autostart_enabled,
+    load_curve, load_saved_mode, pct_to_raw, raw_to_pct, read_telemetry, save_curve,
+    set_auto_game_enabled, set_autostart, set_battery_limit_80, set_kbd_brightness,
+    state_file_path, BatteryLimitState, CpuSampler, FanCurve, HardwareInfo, KbdBacklightState,
+    PowerMode, Telemetry,
 };
 use crate::i18n::{load_lang, save_lang, strings, Lang};
 use crate::updater::{check_for_update, open_url, UpdateInfo, CURRENT_VERSION};
@@ -49,6 +51,9 @@ struct NitroApp {
     lang: Lang,
     hw_info: HardwareInfo,
     autostart: bool,
+    auto_game: bool,
+    battery_limit: BatteryLimitState,
+    kbd_backlight: KbdBacklightState,
     cpu_fan_pct: u16,
     gpu_fan_pct: u16,
     link_fans: bool,
@@ -128,6 +133,9 @@ impl NitroApp {
             lang: load_lang(),
             hw_info,
             autostart: is_autostart_enabled(),
+            auto_game: is_auto_game_enabled(),
+            battery_limit: get_battery_limit_state(),
+            kbd_backlight: get_kbd_backlight_state(),
             cpu_fan_pct: cpu_pct,
             gpu_fan_pct: gpu_pct,
             link_fans: true,
@@ -682,12 +690,32 @@ impl eframe::App for NitroApp {
                                     .map(|u| format!("{u:.1}%"))
                                     .unwrap_or_else(|| "--%".into());
                                 ui.label(RichText::new(temp).size(24.0).strong().color(TEXT_ICE));
-                                ui.add_space(16.0);
-                                ui.label(
-                                    RichText::new(format!("{}: {usage}", s.cpu_usage))
-                                        .size(15.0)
+                                ui.add_space(12.0);
+                                ui.vertical(|ui| {
+                                    let freq_str = tel
+                                        .cpu_freq_mhz
+                                        .map(|f| format!("{f} MHz"))
+                                        .unwrap_or_else(|| "-- MHz".to_string());
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "{}: {usage}  |  {}: {freq_str}",
+                                            s.cpu_usage, s.cpu_clock
+                                        ))
+                                        .size(13.0)
                                         .color(ACCENT_CYAN_SOFT),
-                                );
+                                    );
+                                    let ram_str = match (tel.ram_used_mb, tel.ram_total_mb) {
+                                        (Some(u), Some(t)) => {
+                                            format!("{:.1} / {:.1} GB", u as f32 / 1024.0, t as f32 / 1024.0)
+                                        }
+                                        _ => "-- GB".to_string(),
+                                    };
+                                    ui.label(
+                                        RichText::new(format!("{}: {ram_str}", s.ram_label))
+                                            .size(11.5)
+                                            .color(TEXT_MUTED),
+                                    );
+                                });
                             });
                         });
 
@@ -1051,6 +1079,55 @@ impl eframe::App for NitroApp {
                     });
 
                     ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        let mut auto_game = self.auto_game;
+                        if ui
+                            .checkbox(
+                                &mut auto_game,
+                                RichText::new(s.auto_game_mode).size(12.0).color(TEXT_ICE),
+                            )
+                            .changed()
+                        {
+                            self.auto_game = auto_game;
+                            set_auto_game_enabled(auto_game);
+                        }
+
+                        if self.battery_limit.supported {
+                            ui.add_space(16.0);
+                            let mut bat_80 = self.battery_limit.enabled_80;
+                            if ui
+                                .checkbox(
+                                    &mut bat_80,
+                                    RichText::new(s.battery_limit_80).size(12.0).color(TEXT_ICE),
+                                )
+                                .changed()
+                            {
+                                match set_battery_limit_80(bat_80) {
+                                    Ok(()) => self.battery_limit.enabled_80 = bat_80,
+                                    Err(e) => self.status_msg = Some(e),
+                                }
+                            }
+                        }
+
+                        if self.kbd_backlight.supported {
+                            ui.add_space(16.0);
+                            ui.label(RichText::new(s.kbd_backlight).size(12.0).color(TEXT_ICE));
+                            let mut br = self.kbd_backlight.brightness;
+                            let max_br = self.kbd_backlight.max_brightness;
+                            if ui
+                                .add(egui::Slider::new(&mut br, 0..=max_br))
+                                .changed()
+                            {
+                                if let Err(e) = set_kbd_brightness(br) {
+                                    self.status_msg = Some(e);
+                                } else {
+                                    self.kbd_backlight.brightness = br;
+                                }
+                            }
+                        }
+                    });
+
+                    ui.add_space(6.0);
                     ui.label(
                         RichText::new(s.footer_disclaimer)
                             .size(10.5)
