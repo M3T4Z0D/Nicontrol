@@ -101,10 +101,6 @@ pub struct Strings {
     pub cpu_chart_title: &'static str,
     pub gpu_chart_title: &'static str,
 
-    pub fans_card_title: &'static str,
-    pub fans_none_detected: &'static str,
-    pub fan_auto_label: &'static str,
-
     pub fine_fan_title: &'static str,
     pub sync_fans: &'static str,
     pub cpu_fan_label: &'static str,
@@ -182,10 +178,6 @@ const EN_STRINGS: Strings = Strings {
     cpu_chart_title: "CPU — Usage & Temperature (60s)",
     gpu_chart_title: "GPU — Usage, Power & Temp (60s)",
 
-    fans_card_title: "Detected Fans & Speeds",
-    fans_none_detected: "No fan sensors or EC fan devices detected on this machine.",
-    fan_auto_label: "Auto",
-
     fine_fan_title: "Fine-Grained Fan Control",
     sync_fans: "Sync CPU + GPU",
     cpu_fan_label: "CPU Fan (fan1):",
@@ -262,10 +254,6 @@ const PT_BR_STRINGS: Strings = Strings {
     gpu_suspended: "Suspensa (RTD3)",
     cpu_chart_title: "CPU — Uso & Temperatura (60s)",
     gpu_chart_title: "GPU — Uso, Potência & Temp (60s)",
-
-    fans_card_title: "Ventoinhas Detectadas & Velocidade",
-    fans_none_detected: "Nenhum sensor ou dispositivo de ventoinha detectado nesta máquina.",
-    fan_auto_label: "Automático",
 
     fine_fan_title: "Controle Fino das Ventoinhas",
     sync_fans: "Sincronizar CPU + GPU",
