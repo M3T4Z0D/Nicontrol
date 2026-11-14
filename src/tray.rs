@@ -259,7 +259,7 @@ impl Tray for NitroTray {
         vec![
             StandardItem {
                 label: s.tray_open_gui.to_string(),
-                icon_name: "utilities-system-monitor".to_string(),
+                icon_name: "nicontrol".to_string(),
                 activate: Box::new(|_| open_gui_window()),
                 ..Default::default()
             }
