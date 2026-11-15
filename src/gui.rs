@@ -10,7 +10,6 @@ use crate::i18n::{load_lang, save_lang, strings, Lang};
 use crate::updater::{check_for_update, open_url, UpdateInfo, CURRENT_VERSION};
 use eframe::egui;
 use egui::{Color32, CornerRadius, Pos2, RichText, Stroke, Vec2};
-use egui_plot::{Legend, Line, Plot, PlotPoints};
 use std::collections::VecDeque;
 use std::f32::consts::TAU;
 use std::fs;
@@ -406,15 +405,309 @@ fn crystal_action_button(
     }
 
     let text_col = if active { TEXT_ICE } else if hovered { ACCENT_CYAN_SOFT } else { TEXT_ICE };
-    painter.text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        label,
+    let galley = painter.layout_no_wrap(
+        label.to_string(),
         egui::FontId::proportional(13.0),
         text_col,
     );
+    if active {
+        let dot_r = 4.0_f32;
+        let gap = 7.0_f32;
+        let total_w = dot_r * 2.0 + gap + galley.size().x;
+        let start_x = rect.center().x - total_w * 0.5;
+        let dot_center = Pos2::new(start_x + dot_r, rect.center().y);
+        let [r, g, b, _] = accent.to_array();
+        painter.circle_filled(dot_center, dot_r + 2.5, Color32::from_rgba_unmultiplied(r, g, b, 70));
+        painter.circle_filled(dot_center, dot_r, accent);
+        painter.galley(
+            Pos2::new(start_x + dot_r * 2.0 + gap, rect.center().y - galley.size().y * 0.5),
+            galley,
+            text_col,
+        );
+    } else {
+        painter.galley(
+            Pos2::new(
+                rect.center().x - galley.size().x * 0.5,
+                rect.center().y - galley.size().y * 0.5,
+            ),
+            galley,
+            text_col,
+        );
+    }
 
     resp
+}
+
+struct ChartSeries<'a> {
+    name: &'a str,
+    unit: &'a str,
+    values: &'a VecDeque<f64>,
+    color: Color32,
+    fill_gradient: bool,
+    dashed: bool,
+}
+
+fn catmull_rom_smooth(raw: &[Pos2], y_min: f32, y_max: f32, subdivisions: usize) -> Vec<Pos2> {
+    if raw.len() <= 2 || subdivisions <= 1 {
+        return raw.to_vec();
+    }
+    let mut out = Vec::with_capacity((raw.len() - 1) * subdivisions + 1);
+    for i in 0..raw.len() - 1 {
+        let p0 = if i == 0 { raw[0] } else { raw[i - 1] };
+        let p1 = raw[i];
+        let p2 = raw[i + 1];
+        let p3 = if i + 2 < raw.len() { raw[i + 2] } else { raw[raw.len() - 1] };
+
+        for s in 0..subdivisions {
+            let t = s as f32 / subdivisions as f32;
+            let t2 = t * t;
+            let t3 = t2 * t;
+            let x = 0.5
+                * ((2.0 * p1.x)
+                    + (-p0.x + p2.x) * t
+                    + (2.0 * p0.x - 5.0 * p1.x + 4.0 * p2.x - p3.x) * t2
+                    + (-p0.x + 3.0 * p1.x - 3.0 * p2.x + p3.x) * t3);
+            let y = 0.5
+                * ((2.0 * p1.y)
+                    + (-p0.y + p2.y) * t
+                    + (2.0 * p0.y - 5.0 * p1.y + 4.0 * p2.y - p3.y) * t2
+                    + (-p0.y + 3.0 * p1.y - 3.0 * p2.y + p3.y) * t3);
+            out.push(Pos2::new(x, y.clamp(y_min, y_max)));
+        }
+    }
+    if let Some(&last) = raw.last() {
+        out.push(Pos2::new(last.x, last.y.clamp(y_min, y_max)));
+    }
+    out
+}
+
+fn paint_vertical_gradient(
+    painter: &egui::Painter,
+    pts: &[Pos2],
+    baseline_y: f32,
+    top_y: f32,
+    color: Color32,
+    max_alpha: u8,
+) {
+    if pts.len() < 2 {
+        return;
+    }
+    let span = (baseline_y - top_y).max(1.0);
+    let mut mesh = egui::Mesh::default();
+    let [r, g, b, _] = color.to_array();
+
+    for (i, &p) in pts.iter().enumerate() {
+        let ratio = ((baseline_y - p.y) / span).clamp(0.0, 1.0);
+        let alpha = (max_alpha as f32 * (0.35 + 0.65 * ratio)).round() as u8;
+        let top_col = Color32::from_rgba_unmultiplied(r, g, b, alpha);
+        let bot_col = Color32::from_rgba_unmultiplied(r, g, b, 0);
+
+        mesh.vertices.push(egui::epaint::Vertex {
+            pos: p,
+            uv: egui::epaint::WHITE_UV,
+            color: top_col,
+        });
+        mesh.vertices.push(egui::epaint::Vertex {
+            pos: Pos2::new(p.x, baseline_y),
+            uv: egui::epaint::WHITE_UV,
+            color: bot_col,
+        });
+
+        if i > 0 {
+            let base = (i as u32 - 1) * 2;
+            mesh.indices.extend_from_slice(&[base, base + 1, base + 2]);
+            mesh.indices.extend_from_slice(&[base + 1, base + 3, base + 2]);
+        }
+    }
+    painter.add(egui::Shape::mesh(mesh));
+}
+
+fn paint_glow_line(
+    painter: &egui::Painter,
+    pts: &[Pos2],
+    color: Color32,
+    width: f32,
+    glow: bool,
+    dashed: bool,
+) {
+    if pts.len() < 2 {
+        return;
+    }
+    let [r, g, b, _] = color.to_array();
+
+    if glow {
+        painter.add(egui::Shape::line(
+            pts.to_vec(),
+            Stroke::new(width + 3.0, Color32::from_rgba_unmultiplied(r, g, b, 18)),
+        ));
+        painter.add(egui::Shape::line(
+            pts.to_vec(),
+            Stroke::new(width + 1.4, Color32::from_rgba_unmultiplied(r, g, b, 42)),
+        ));
+    }
+
+    if dashed {
+        painter.add(egui::Shape::dashed_line(
+            pts,
+            Stroke::new(width, color),
+            4.5,
+            3.5,
+        ));
+    } else {
+        painter.add(egui::Shape::line(pts.to_vec(), Stroke::new(width, color)));
+    }
+}
+
+fn draw_smooth_glow_chart(ui: &mut egui::Ui, height: f32, max_y: f64, series: &[ChartSeries<'_>]) {
+    let desired = Vec2::new(ui.available_width(), height);
+    let (rect, resp) = ui.allocate_exact_size(desired, egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+
+    // Chart container
+    painter.rect(
+        rect,
+        CornerRadius::same(8),
+        Color32::from_rgba_premultiplied(8, 14, 24, 235),
+        Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(56, 189, 248, 32)),
+        egui::StrokeKind::Inside,
+    );
+
+    let plot = egui::Rect::from_min_max(
+        Pos2::new(rect.left() + 30.0, rect.top() + 24.0),
+        Pos2::new(rect.right() - 10.0, rect.bottom() - 10.0),
+    );
+    if plot.width() <= 10.0 || plot.height() <= 10.0 {
+        return;
+    }
+
+    // Subtle horizontal grid + Y labels
+    for pct in [0.0_f32, 0.25, 0.5, 0.75, 1.0] {
+        let y = plot.bottom() - pct * plot.height();
+        let grid_col = if pct == 0.0 {
+            Color32::from_rgba_unmultiplied(148, 163, 184, 42)
+        } else {
+            Color32::from_rgba_unmultiplied(148, 163, 184, 22)
+        };
+        painter.line_segment([Pos2::new(plot.left(), y), Pos2::new(plot.right(), y)], Stroke::new(1.0_f32, grid_col));
+
+        if pct == 0.0 || pct == 0.5 || pct == 1.0 {
+            let val = (max_y as f32 * pct).round() as i32;
+            painter.text(
+                Pos2::new(rect.left() + 25.0, y),
+                egui::Align2::RIGHT_CENTER,
+                format!("{val}"),
+                egui::FontId::proportional(10.0),
+                TEXT_MUTED,
+            );
+        }
+    }
+
+    let map_series = |values: &VecDeque<f64>| -> Vec<Pos2> {
+        let n = values.len();
+        if n == 0 {
+            return Vec::new();
+        }
+        let denom = (n.saturating_sub(1)).max(1) as f32;
+        values
+            .iter()
+            .enumerate()
+            .map(|(i, v)| {
+                let x = plot.left() + (i as f32 / denom) * plot.width();
+                let frac = (*v / max_y).clamp(0.0, 1.0) as f32;
+                let y = plot.bottom() - frac * plot.height();
+                Pos2::new(x, y)
+            })
+            .collect()
+    };
+
+    // Draw fills first, then lines
+    let mut smoothed_all: Vec<Vec<Pos2>> = Vec::with_capacity(series.len());
+    let mut raw_all: Vec<Vec<Pos2>> = Vec::with_capacity(series.len());
+    for s in series {
+        let raw = map_series(s.values);
+        let smooth = catmull_rom_smooth(&raw, plot.top(), plot.bottom(), 4);
+        if s.fill_gradient {
+            paint_vertical_gradient(&painter, &smooth, plot.bottom(), plot.top(), s.color, 76);
+        }
+        raw_all.push(raw);
+        smoothed_all.push(smooth);
+    }
+    for (s, smooth) in series.iter().zip(smoothed_all.iter()) {
+        paint_glow_line(
+            &painter,
+            smooth,
+            s.color,
+            if s.fill_gradient { 1.6 } else { 1.25 },
+            s.fill_gradient,
+            s.dashed,
+        );
+    }
+
+    // Compact legend at top-left
+    let mut lx = plot.left();
+    let ly = rect.top() + 12.0;
+    for s in series {
+        painter.circle_filled(Pos2::new(lx + 4.0, ly), 3.5, s.color);
+        let galley = painter.layout_no_wrap(
+            s.name.to_string(),
+            egui::FontId::proportional(10.5),
+            TEXT_ICE,
+        );
+        let text_w = galley.size().x;
+        painter.galley(Pos2::new(lx + 11.0, ly - galley.size().y * 0.5), galley, TEXT_ICE);
+        lx += 20.0 + text_w;
+    }
+
+    // Interactive hover crosshair
+    if let Some(hover) = resp.hover_pos() {
+        if plot.contains(hover) {
+            if let Some(first) = series.first() {
+                let n = first.values.len();
+                if n > 1 {
+                    let frac = ((hover.x - plot.left()) / plot.width()).clamp(0.0, 1.0);
+                    let idx = ((frac * (n - 1) as f32).round() as usize).min(n - 1);
+                    let cx = plot.left() + (idx as f32 / (n - 1) as f32) * plot.width();
+                    painter.line_segment(
+                        [Pos2::new(cx, plot.top()), Pos2::new(cx, plot.bottom())],
+                        Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(226, 232, 240, 80)),
+                    );
+
+                    let mut parts = Vec::with_capacity(series.len());
+                    for (s, raw) in series.iter().zip(raw_all.iter()) {
+                        if let Some(&pt) = raw.get(idx) {
+                            painter.circle_filled(pt, 4.0, s.color);
+                            painter.circle_stroke(pt, 4.5, Stroke::new(1.2_f32, BG_OBSIDIAN));
+                        }
+                        if let Some(v) = s.values.get(idx) {
+                            parts.push(format!("{:.0}{}", v, s.unit));
+                        }
+                    }
+
+                    if !parts.is_empty() {
+                        let label = parts.join("  •  ");
+                        let galley = painter.layout_no_wrap(
+                            label,
+                            egui::FontId::proportional(10.5),
+                            TEXT_ICE,
+                        );
+                        let pill_w = galley.size().x + 12.0;
+                        let pill_h = galley.size().y + 6.0;
+                        let px = (cx + 8.0).min(plot.right() - pill_w - 4.0).max(plot.left() + 4.0);
+                        let py = plot.top() + 2.0;
+                        let pill = egui::Rect::from_min_size(Pos2::new(px, py), Vec2::new(pill_w, pill_h));
+                        painter.rect(
+                            pill,
+                            CornerRadius::same(5),
+                            Color32::from_rgba_premultiplied(15, 23, 42, 230),
+                            Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(56, 189, 248, 80)),
+                            egui::StrokeKind::Inside,
+                        );
+                        painter.galley(Pos2::new(px + 6.0, py + 3.0), galley, TEXT_ICE);
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl eframe::App for NitroApp {
@@ -497,8 +790,8 @@ impl eframe::App for NitroApp {
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let lang_btn_label = match self.lang {
-                                Lang::En => "🌐 EN",
-                                Lang::PtBr => "🌐 PT-BR",
+                                Lang::En => "EN",
+                                Lang::PtBr => "PT-BR",
                             };
                             if ui.button(lang_btn_label).clicked() {
                                 self.lang = match self.lang {
@@ -547,7 +840,7 @@ impl eframe::App for NitroApp {
                                 ui.horizontal(|ui| {
                                     ui.label(
                                         RichText::new(format!(
-                                            "✨ {}: {}",
+                                            "{}: {}",
                                             s.update_available, upd.latest_version
                                         ))
                                         .size(12.5)
@@ -712,51 +1005,49 @@ impl eframe::App for NitroApp {
 
                     ui.add_space(6.0);
 
-                    // Telemetry Summary Cards
-                    ui.columns(2, |cols| {
+                    // Telemetry Summary Cards: 1 row, grouped as [CPU | RAM] and [GPU | VRAM]
+                    ui.columns(2, |outer| {
+                        outer[0].scope(|ui| {
+                            ui.spacing_mut().item_spacing.x = 4.0;
+                            ui.columns(2, |cols| {
                         crystal_card(&mut cols[0], false, |ui| {
+                            ui.set_min_height(68.0);
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new("CPU").size(12.0).strong().color(ACCENT_ICE));
-                                ui.label(
-                                    RichText::new(&self.hw_info.cpu_model)
-                                        .size(12.0)
-                                        .color(TEXT_MUTED),
+                                ui.label(RichText::new("CPU").size(11.5).strong().color(ACCENT_ICE));
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(&self.hw_info.cpu_model)
+                                            .size(11.0)
+                                            .color(TEXT_MUTED),
+                                    )
+                                    .truncate(),
                                 );
                             });
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
                                 let temp = tel
                                     .cpu_temp_c
-                                    .map(|t| format!("{t} °C"))
-                                    .unwrap_or_else(|| "-- °C".into());
+                                    .map(|t| format!("{t}°C"))
+                                    .unwrap_or_else(|| "--°C".into());
                                 let usage = tel
                                     .cpu_usage_pct
-                                    .map(|u| format!("{u:.1}%"))
+                                    .map(|u| format!("{u:.0}%"))
                                     .unwrap_or_else(|| "--%".into());
-                                ui.label(RichText::new(temp).size(24.0).strong().color(TEXT_ICE));
-                                ui.add_space(12.0);
+                                let freq_str = tel
+                                    .cpu_freq_mhz
+                                    .map(|f| format!("{f} MHz"))
+                                    .unwrap_or_else(|| "-- MHz".to_string());
+                                ui.label(RichText::new(temp).size(20.0).strong().color(TEXT_ICE));
+                                ui.add_space(6.0);
                                 ui.vertical(|ui| {
-                                    let freq_str = tel
-                                        .cpu_freq_mhz
-                                        .map(|f| format!("{f} MHz"))
-                                        .unwrap_or_else(|| "-- MHz".to_string());
                                     ui.label(
-                                        RichText::new(format!(
-                                            "{}: {usage}  |  {}: {freq_str}",
-                                            s.cpu_usage, s.cpu_clock
-                                        ))
-                                        .size(13.0)
-                                        .color(ACCENT_CYAN_SOFT),
-                                    );
-                                    let ram_str = match (tel.ram_used_mb, tel.ram_total_mb) {
-                                        (Some(u), Some(t)) => {
-                                            format!("{:.1} / {:.1} GB", u as f32 / 1024.0, t as f32 / 1024.0)
-                                        }
-                                        _ => "-- GB".to_string(),
-                                    };
-                                    ui.label(
-                                        RichText::new(format!("{}: {ram_str}", s.ram_label))
+                                        RichText::new(format!("{}: {usage}", s.cpu_usage))
                                             .size(11.5)
+                                            .color(ACCENT_CYAN_SOFT),
+                                    );
+                                    ui.label(
+                                        RichText::new(freq_str)
+                                            .size(10.5)
                                             .color(TEXT_MUTED),
                                     );
                                 });
@@ -764,24 +1055,77 @@ impl eframe::App for NitroApp {
                         });
 
                         crystal_card(&mut cols[1], false, |ui| {
+                            ui.set_min_height(68.0);
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new("GPU").size(12.0).strong().color(ACCENT_ICE));
-                                ui.label(
-                                    RichText::new(&self.hw_info.gpu_model)
-                                        .size(12.0)
-                                        .color(TEXT_MUTED),
+                                ui.label(RichText::new(s.ram_label).size(11.5).strong().color(ACCENT_ICE));
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new("Memory")
+                                            .size(11.0)
+                                            .color(TEXT_MUTED),
+                                    )
+                                    .truncate(),
+                                );
+                            });
+                            ui.add_space(4.0);
+                            ui.horizontal(|ui| {
+                                let (pct_str, used_str, free_str) = match (tel.ram_used_mb, tel.ram_total_mb) {
+                                    (Some(u), Some(t)) if t > 0 => {
+                                        let pct = (u as f32 / t as f32) * 100.0;
+                                        let free = t.saturating_sub(u);
+                                        (
+                                            format!("{pct:.0}%"),
+                                            format!("{:.1}/{:.1} GB", u as f32 / 1024.0, t as f32 / 1024.0),
+                                            format!("Free {:.1} GB", free as f32 / 1024.0),
+                                        )
+                                    }
+                                    _ => ("--%".to_string(), "-- GB".to_string(), "Free --".to_string()),
+                                };
+                                ui.label(RichText::new(pct_str).size(20.0).strong().color(TEXT_ICE));
+                                ui.add_space(6.0);
+                                ui.vertical(|ui| {
+                                    ui.label(
+                                        RichText::new(used_str)
+                                            .size(11.5)
+                                            .color(ACCENT_CYAN_SOFT),
+                                    );
+                                    ui.label(
+                                        RichText::new(free_str)
+                                            .size(10.5)
+                                            .color(TEXT_MUTED),
+                                    );
+                                });
+                            });
+                        });
+                            });
+                        });
+
+                        outer[1].scope(|ui| {
+                            ui.spacing_mut().item_spacing.x = 4.0;
+                            ui.columns(2, |cols| {
+                        crystal_card(&mut cols[0], false, |ui| {
+                            ui.set_min_height(68.0);
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new("GPU").size(11.5).strong().color(ACCENT_ICE));
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(&self.hw_info.gpu_model)
+                                            .size(11.0)
+                                            .color(TEXT_MUTED),
+                                    )
+                                    .truncate(),
                                 );
                             });
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
                                 let temp = tel
                                     .gpu_temp_c
-                                    .map(|t| format!("{t} °C"))
-                                    .unwrap_or_else(|| "-- °C".into());
+                                    .map(|t| format!("{t}°C"))
+                                    .unwrap_or_else(|| "--°C".into());
                                 let power = tel
                                     .gpu_power_w
-                                    .map(|w| format!("{w:.1} W"))
-                                    .unwrap_or_else(|| "-- W".into());
+                                    .map(|w| format!("{w:.0}W"))
+                                    .unwrap_or_else(|| "--W".into());
                                 let usage = tel
                                     .gpu_usage_pct
                                     .map(|u| format!("{u:.0}%"))
@@ -791,31 +1135,67 @@ impl eframe::App for NitroApp {
                                     .map(|c| format!("{c} MHz"))
                                     .unwrap_or_else(|| "-- MHz".into());
 
-                                ui.label(RichText::new(temp).size(24.0).strong().color(TEXT_ICE));
-                                ui.add_space(12.0);
+                                ui.label(RichText::new(temp).size(20.0).strong().color(TEXT_ICE));
+                                ui.add_space(6.0);
                                 ui.vertical(|ui| {
                                     ui.label(
-                                        RichText::new(format!(
-                                            "{}: {power}  |  {}: {usage}",
-                                            s.gpu_power, s.gpu_usage
-                                        ))
-                                        .size(13.0)
-                                        .color(ACCENT_CYAN_SOFT),
-                                    );
-                                    let vram_str = match (tel.gpu_vram_mb, tel.gpu_vram_total_mb) {
-                                        (Some(used), Some(total)) if total > 0 => {
-                                            let pct = (used as f32 / total as f32) * 100.0;
-                                            format!("{used} / {total} MB ({pct:.0}%)")
-                                        }
-                                        (Some(used), _) => format!("{used} MB"),
-                                        _ => "-- MB".to_string(),
-                                    };
-                                    ui.label(
-                                        RichText::new(format!("Clock: {clock}  |  VRAM: {vram_str}"))
+                                        RichText::new(format!("{power} | {usage}"))
                                             .size(11.5)
+                                            .color(ACCENT_CYAN_SOFT),
+                                    );
+                                    ui.label(
+                                        RichText::new(clock)
+                                            .size(10.5)
                                             .color(TEXT_MUTED),
                                     );
                                 });
+                            });
+                        });
+
+                        crystal_card(&mut cols[1], false, |ui| {
+                            ui.set_min_height(68.0);
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new("VRAM").size(11.5).strong().color(ACCENT_ICE));
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new("GPU Mem")
+                                            .size(11.0)
+                                            .color(TEXT_MUTED),
+                                    )
+                                    .truncate(),
+                                );
+                            });
+                            ui.add_space(4.0);
+                            ui.horizontal(|ui| {
+                                let (pct_str, used_str, free_str) = match (tel.gpu_vram_mb, tel.gpu_vram_total_mb) {
+                                    (Some(used), Some(total)) if total > 0 => {
+                                        let pct = (used as f32 / total as f32) * 100.0;
+                                        let free = total.saturating_sub(used);
+                                        (
+                                            format!("{pct:.0}%"),
+                                            format!("{used}/{total} MB"),
+                                            format!("Free {free} MB"),
+                                        )
+                                    }
+                                    (Some(used), _) => ("--%".to_string(), format!("{used} MB"), "Free --".to_string()),
+                                    _ => ("--%".to_string(), "-- MB".to_string(), "Free --".to_string()),
+                                };
+                                ui.label(RichText::new(pct_str).size(20.0).strong().color(TEXT_ICE));
+                                ui.add_space(6.0);
+                                ui.vertical(|ui| {
+                                    ui.label(
+                                        RichText::new(used_str)
+                                            .size(11.5)
+                                            .color(ACCENT_CYAN_SOFT),
+                                    );
+                                    ui.label(
+                                        RichText::new(free_str)
+                                            .size(10.5)
+                                            .color(TEXT_MUTED),
+                                    );
+                                });
+                            });
+                        });
                             });
                         });
                     });
@@ -823,6 +1203,7 @@ impl eframe::App for NitroApp {
                     ui.add_space(12.0);
 
                     // Real-time Charts (Separated CPU & GPU)
+                    let primary_col = if self.mode == PowerMode::Turbo { ACCENT_TURBO_GLOW } else { ACCENT_ICE };
                     ui.columns(2, |cols| {
                         crystal_card(&mut cols[0], false, |ui| {
                             ui.horizontal(|ui| {
@@ -850,45 +1231,29 @@ impl eframe::App for NitroApp {
                             });
                             ui.add_space(4.0);
 
-                            let cpu_pts: PlotPoints = cpu_hist
-                                .iter()
-                                .enumerate()
-                                .map(|(i, v)| [i as f64, *v])
-                                .collect();
-                            let cpu_t_pts: PlotPoints = cpu_t_hist
-                                .iter()
-                                .enumerate()
-                                .map(|(i, v)| [i as f64, *v])
-                                .collect();
-
-                            Plot::new("cpu_monitor_plot")
-                                .height(165.0)
-                                .include_x(0.0)
-                                .include_x((HISTORY_LEN - 1) as f64)
-                                .include_y(0.0)
-                                .include_y(100.0)
-                                .show_axes([false, true])
-                                .show_grid(true)
-                                .allow_drag(false)
-                                .allow_zoom(false)
-                                .allow_scroll(false)
-                                .legend(Legend::default())
-                                .show(ui, |plot_ui| {
-                                    plot_ui.line(
-                                        Line::new(cpu_pts)
-                                            .name("CPU %")
-                                            .color(ACCENT_ICE)
-                                            .fill(0.0_f32)
-                                            .fill_alpha(0.16_f32)
-                                            .width(2.2_f32),
-                                    );
-                                    plot_ui.line(
-                                        Line::new(cpu_t_pts)
-                                            .name("CPU °C")
-                                            .color(ACCENT_INDIGO)
-                                            .width(2.0_f32),
-                                    );
-                                });
+                            draw_smooth_glow_chart(
+                                ui,
+                                165.0,
+                                100.0,
+                                &[
+                                    ChartSeries {
+                                        name: "CPU %",
+                                        unit: "%",
+                                        values: &cpu_hist,
+                                        color: primary_col,
+                                        fill_gradient: true,
+                                        dashed: false,
+                                    },
+                                    ChartSeries {
+                                        name: "CPU °C",
+                                        unit: "°C",
+                                        values: &cpu_t_hist,
+                                        color: ACCENT_INDIGO,
+                                        fill_gradient: false,
+                                        dashed: true,
+                                    },
+                                ],
+                            );
                         });
 
                         crystal_card(&mut cols[1], false, |ui| {
@@ -921,56 +1286,37 @@ impl eframe::App for NitroApp {
                             });
                             ui.add_space(4.0);
 
-                            let gpu_pts: PlotPoints = gpu_hist
-                                .iter()
-                                .enumerate()
-                                .map(|(i, v)| [i as f64, *v])
-                                .collect();
-                            let power_pts: PlotPoints = power_hist
-                                .iter()
-                                .enumerate()
-                                .map(|(i, v)| [i as f64, *v])
-                                .collect();
-                            let gpu_t_pts: PlotPoints = gpu_t_hist
-                                .iter()
-                                .enumerate()
-                                .map(|(i, v)| [i as f64, *v])
-                                .collect();
-
-                            Plot::new("gpu_monitor_plot")
-                                .height(165.0)
-                                .include_x(0.0)
-                                .include_x((HISTORY_LEN - 1) as f64)
-                                .include_y(0.0)
-                                .include_y(100.0)
-                                .show_axes([false, true])
-                                .show_grid(true)
-                                .allow_drag(false)
-                                .allow_zoom(false)
-                                .allow_scroll(false)
-                                .legend(Legend::default())
-                                .show(ui, |plot_ui| {
-                                    plot_ui.line(
-                                        Line::new(gpu_pts)
-                                            .name("GPU %")
-                                            .color(ACCENT_ICE)
-                                            .fill(0.0_f32)
-                                            .fill_alpha(0.16_f32)
-                                            .width(2.2_f32),
-                                    );
-                                    plot_ui.line(
-                                        Line::new(power_pts)
-                                            .name("GPU W")
-                                            .color(Color32::from_rgb(251, 191, 36))
-                                            .width(2.0_f32),
-                                    );
-                                    plot_ui.line(
-                                        Line::new(gpu_t_pts)
-                                            .name("GPU °C")
-                                            .color(Color32::from_rgb(52, 211, 153))
-                                            .width(1.9_f32),
-                                    );
-                                });
+                            draw_smooth_glow_chart(
+                                ui,
+                                165.0,
+                                100.0,
+                                &[
+                                    ChartSeries {
+                                        name: "GPU %",
+                                        unit: "%",
+                                        values: &gpu_hist,
+                                        color: primary_col,
+                                        fill_gradient: true,
+                                        dashed: false,
+                                    },
+                                    ChartSeries {
+                                        name: "GPU W",
+                                        unit: "W",
+                                        values: &power_hist,
+                                        color: Color32::from_rgb(251, 191, 36),
+                                        fill_gradient: false,
+                                        dashed: false,
+                                    },
+                                    ChartSeries {
+                                        name: "GPU °C",
+                                        unit: "°C",
+                                        values: &gpu_t_hist,
+                                        color: Color32::from_rgb(52, 211, 153),
+                                        fill_gradient: false,
+                                        dashed: true,
+                                    },
+                                ],
+                            );
                         });
                     });
 

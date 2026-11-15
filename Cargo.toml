@@ -9,7 +9,6 @@ categories = ["hardware-support", "gui"]
 
 [dependencies]
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
-egui_plot = "0.31"
 ksni = { version = "0.3", features = ["blocking"] }
 
 [package.metadata.deb]

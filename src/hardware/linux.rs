@@ -88,6 +88,16 @@ pub fn detect_hardware_info() -> HardwareInfo {
 
 fn write_device(path: &str, value: &str) -> Result<(), String> {
     let lang = load_lang();
+    if !Path::new(path).exists() {
+        return Err(match lang {
+            Lang::PtBr => format!(
+                "Dispositivo {path} não encontrado. Verifique se o driver EC está carregado."
+            ),
+            Lang::En => format!(
+                "Device {path} not found. Check if your EC kernel driver is loaded."
+            ),
+        });
+    }
     fs::write(path, format!("{value}\n")).map_err(|e| match (lang, e.kind()) {
         (Lang::PtBr, std::io::ErrorKind::PermissionDenied) => format!(
             "Sem permissão em {path}. Configure uma regra udev ou instale o pacote .deb."
@@ -556,13 +566,16 @@ pub fn read_telemetry(cpu_sampler: &mut CpuSampler) -> Telemetry {
         if output.status.success() {
             let text = String::from_utf8_lossy(&output.stdout);
             let parts: Vec<&str> = text.trim().split(',').collect();
+            let parse_u32_flex = |s: &str| -> Option<u32> {
+                s.trim().parse::<f32>().ok().map(|v| v.round() as u32)
+            };
             if parts.len() == 6 {
                 tel.gpu_usage_pct = parts[0].trim().parse::<f32>().ok();
-                tel.gpu_temp_c = parts[1].trim().parse::<u32>().ok();
+                tel.gpu_temp_c = parse_u32_flex(parts[1]);
                 tel.gpu_power_w = parts[2].trim().parse::<f32>().ok();
-                tel.gpu_clock_mhz = parts[3].trim().parse::<u32>().ok();
-                tel.gpu_vram_mb = parts[4].trim().parse::<u32>().ok();
-                tel.gpu_vram_total_mb = parts[5].trim().parse::<u32>().ok();
+                tel.gpu_clock_mhz = parse_u32_flex(parts[3]);
+                tel.gpu_vram_mb = parse_u32_flex(parts[4]);
+                tel.gpu_vram_total_mb = parse_u32_flex(parts[5]);
                 got_nvidia = true;
             }
         }
