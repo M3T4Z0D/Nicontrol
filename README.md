@@ -19,6 +19,10 @@
 
 > **Disclaimer:** **Nicontrol** is an unofficial, community-developed open-source project and is **not affiliated with, endorsed by, or connected to Acer Incorporated**. *Acer*, *Nitro*, and *NitroSense* are trademarks of Acer Inc. This software interacts with hardware fan and power-mode interfaces; **use at your own risk** and always monitor your temperatures.
 
+<div align="center">
+  <img src="assets/screenshot.png" alt="Nicontrol Control Center Screenshot" width="760" />
+</div>
+
 ---
 
 ## Features
